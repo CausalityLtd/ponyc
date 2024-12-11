@@ -43,6 +43,8 @@ endif()
 if(PONY_USE_ADDRESS_SANITIZER)
     set(PONY_OUTPUT_SUFFIX "${PONY_OUTPUT_SUFFIX}-address_sanitizer")
     list(APPEND PONY_SANITIZERS_ENABLED "address")
+    add_compile_options(-DUSE_ADDRESS_SANITIZER)
+    add_link_options(-DUSE_ADDRESS_SANITIZER)
 endif()
 
 if(PONY_USE_UNDEFINED_BEHAVIOR_SANITIZER)

@@ -21,6 +21,10 @@
 
 #ifdef POOL_USE_DEFAULT
 
+#ifdef USE_ADDRESS_SANITIZER
+#include <sanitizer/asan_interface.h>
+#endif
+
 #ifdef USE_VALGRIND
 #include <valgrind/valgrind.h>
 #include <valgrind/helgrind.h>
@@ -659,10 +663,27 @@ static void* pool_alloc_pages(size_t size)
 
   // We have no free blocks big enough.
   if(size >= POOL_MMAP)
-    return ponyint_virt_alloc(size);
+  {
+    p = ponyint_virt_alloc(size);
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_POISON_MEMORY_REGION(p, size);
+#endif
+
+    return p;
+  }
 
   pool_block_t* block = (pool_block_t*)ponyint_virt_alloc(POOL_MMAP);
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_POISON_MEMORY_REGION(block, POOL_MMAP);
+#endif
+
   size_t rem = POOL_MMAP - size;
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_UNPOISON_MEMORY_REGION(block, sizeof(pool_block_t));
+#endif
 
   block->size = rem;
   block->next = NULL;
@@ -681,6 +702,10 @@ static void pool_free_pages(void* p, size_t size)
   {
     // TODO: ???
   }
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_UNPOISON_MEMORY_REGION(p, sizeof(pool_block_t));
+#endif
 
   pool_block_t* block = (pool_block_t*)p;
   block->prev = NULL;
@@ -825,6 +850,10 @@ void* ponyint_pool_alloc(size_t index)
   void* p = pool_get(pool, index);
   TRACK_ALLOC(p, POOL_MIN << index);
 
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_UNPOISON_MEMORY_REGION(p, POOL_MIN << index);
+#endif
+
 #ifdef USE_VALGRIND
   VALGRIND_ENABLE_ERROR_REPORTING;
   VALGRIND_HG_CLEAN_MEMORY(p, POOL_SIZE(index));
@@ -843,6 +872,11 @@ void ponyint_pool_free(size_t index, void* p)
 
   pony_assert(index < POOL_COUNT);
   TRACK_FREE(p, POOL_MIN << index);
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_POISON_MEMORY_REGION(p, POOL_MIN << index);
+  ASAN_UNPOISON_MEMORY_REGION(p, sizeof(pool_central_t));
+#endif
 
   pool_local_t* thread = &pool_local[index];
   pool_global_t* global = &pool_global[index];
@@ -890,6 +924,10 @@ void* ponyint_pool_alloc_size(size_t size)
   size = ponyint_pool_adjust_size(size);
   void* p = pool_alloc_size(size);
 
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_UNPOISON_MEMORY_REGION(p, size);
+#endif
+
   return p;
 }
 
@@ -898,6 +936,10 @@ static void pool_free_size(size_t size, void* p)
 #ifdef USE_VALGRIND
   VALGRIND_HG_CLEAN_MEMORY(p, size);
   VALGRIND_DISABLE_ERROR_REPORTING;
+#endif
+
+#ifdef USE_ADDRESS_SANITIZER
+  ASAN_POISON_MEMORY_REGION(p, size);
 #endif
 
   TRACK_FREE(p, size);
@@ -952,6 +994,10 @@ void* ponyint_pool_realloc_size(size_t old_size, size_t new_size, void* p)
     }
 
     new_p = pool_alloc_size(new_adj_size);
+
+#ifdef USE_ADDRESS_SANITIZER
+    ASAN_UNPOISON_MEMORY_REGION(new_p, new_adj_size);
+#endif
   }
 
   memcpy(new_p, p, old_size < new_size ? old_size : new_size);
@@ -977,6 +1023,11 @@ void ponyint_pool_thread_cleanup()
         pool_push(thread, global);
 
       pool_item_t* item = (pool_item_t*)thread->start;
+
+#ifdef USE_ADDRESS_SANITIZER
+      ASAN_UNPOISON_MEMORY_REGION(item, sizeof(pool_central_t));
+#endif
+
       thread->start += global->size;
       item->next = thread->pool;
       thread->pool = item;
