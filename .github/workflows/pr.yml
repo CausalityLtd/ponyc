@@ -453,6 +453,9 @@ jobs:
           - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
             debugger: lldb
             directives: runtimestats
+          - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20240425
+            debugger: lldb
+            directives: pool_message_passing
 
     name: use ${{ matrix.directives }}
     container:
