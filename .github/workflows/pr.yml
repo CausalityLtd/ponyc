@@ -456,7 +456,9 @@ jobs:
           - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
             debugger: lldb
             directives: pool_memalign,address_sanitizer,undefined_behavior_sanitizer
-            env: ASAN_OPTIONS=detect_leaks=0
+            env:
+              ASAN_OPTIONS: detect_leaks=0
+              PATH: build/libs/bin/:$PATH
 
     name: use ${{ matrix.directives }}
     container:
