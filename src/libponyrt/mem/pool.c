@@ -758,15 +758,13 @@ static pool_item_t* pool_pull(pool_local_t* thread, pool_global_t* global)
   ANNOTATE_HAPPENS_AFTER(&global->central);
 #endif
 
-  pool_item_t* p = (pool_item_t*)top;
-
   pony_assert((top->length > 0) && (top->length <= global->count));
-  TRACK_PULL(p, top->length, global->size);
+  TRACK_PULL((pool_item_t*)top, top->length, global->size);
 
-  thread->pool = p->next;
+  thread->pool = top->next;
   thread->length = top->length - 1;
 
-  return p;
+  return (pool_item_t*)top;
 }
 
 static void* pool_get(pool_local_t* pool, size_t index)
