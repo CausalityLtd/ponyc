@@ -6,7 +6,7 @@
 
 PONY_EXTERN_C_BEGIN
 
-const char* genobj(compile_t* c);
+const char* genobj(compile_t* c, ast_t* program);
 
 PONY_EXTERN_C_END
 

@@ -19,13 +19,23 @@ void program_free(program_t* program);
 /// The actual AST node passed in may be anywhere in the tree.
 uint32_t program_assign_pkg_id(ast_t* ast);
 
+
 /// Process a "lib:" scheme use command.
 bool use_library(ast_t* use, const char* locator, ast_t* name,
+  pass_opt_t* options);
+
+/// Process an "llvm:" scheme use command.
+bool use_llvm(ast_t* use, const char* locator, ast_t* name,
   pass_opt_t* options);
 
 /// Process a "path:" scheme use command.
 bool use_path(ast_t* use, const char* locator, ast_t* name,
   pass_opt_t* options);
+
+/** Assert that the provided ast_t* and the required field
+ * llvm_irs are not NULL before returning the field
+ */
+strlist_t* program_llvm_irs(ast_t* program);
 
 /** Build the required linker arguments based on the libraries we're using.
  * Once this has been called no more calls to use_library() are permitted.

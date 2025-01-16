@@ -34,6 +34,7 @@ static __pony_thread_local use_scheme_t handlers[] =
   {"package:", 8, true, false, use_package},
   {"lib:", 4, false, true, use_library},
   {"path:", 5, false, true, use_path},
+  {"llvm:", 5, false, true, use_llvm},
 
   {"test:", 5, false, false, NULL},  // For testing
   {NULL, 0, false, false, NULL}  // Terminator

@@ -1,7 +1,10 @@
 #include "genobj.h"
+#include "../pkg/program.h"
 #include <llvm-c/BitWriter.h>
+#include <llvm-c/IRReader.h>
+#include <llvm-c/Linker.h>
 
-const char* genobj(compile_t* c)
+const char* genobj(compile_t* c, ast_t* program)
 {
   errors_t* errors = c->opt->check.errors;
 
@@ -46,6 +49,38 @@ const char* genobj(compile_t* c)
     }
 
     return file_o;
+  }
+
+  for(strlist_t* p = program_llvm_irs(program); p != NULL ; p = strlist_next(p))
+  {
+    const char* llvmir = strlist_data(p);
+
+    if(c->opt->verbosity >= VERBOSITY_ALL)
+      fprintf(stderr, "Reading llvm: %s\n", llvmir);
+
+    char* err;
+
+    LLVMMemoryBufferRef buf;
+    if(LLVMCreateMemoryBufferWithContentsOfFile(llvmir, &buf, &err) != 0)
+    {
+      errorf(errors, NULL, "couldn't find LLVMIR at %s: %s", llvmir, err);
+      LLVMDisposeMessage(err);
+      return NULL;
+    }
+
+    LLVMModuleRef mod;
+    if (LLVMParseIRInContext(c->context, buf, &mod, &err) != 0)
+    {
+      errorf(errors, NULL, "couldn't parse LLVMIR at %s: %s", llvmir, err);
+      LLVMDisposeMessage(err);
+      return NULL;
+    }
+
+    if (LLVMLinkModules2(c->module, mod) != 0)
+    {
+      errorf(errors, NULL, "failed to link: %s", llvmir);
+      return NULL;
+    }
   }
 
   LLVMCodeGenFileType fmt;
