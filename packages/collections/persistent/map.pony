@@ -1,6 +1,6 @@
 use mut = "collections"
 
-type Map[K: (mut.Hashable val & Equatable[K]), V: Any #share] is
+type Map[K: (mut.Hashable val & Equatable[K] val), V: Any #share] is
   HashMap[K, V, mut.HashEq[K]]
   """
   A map that uses structural equality on the key.

@@ -217,18 +217,8 @@ static bool names_type(pass_opt_t* opt, ast_t** astp, ast_t* def)
 
   if(tcap == TK_NONE)
   {
-    if((opt->check.frame->constraint != NULL) ||
-      (opt->check.frame->iftype_constraint != NULL))
-    {
-      // A primitive constraint is a val, otherwise #any.
-      if(ast_id(def) == TK_PRIMITIVE)
-        tcap = TK_VAL;
-      else
-        tcap = TK_CAP_ANY;
-    } else {
-      // Use the default capability.
-      tcap = ast_id(def_cap);
-    }
+    // Use the default capability.
+    tcap = ast_id(def_cap);
   }
 
   ast_setid(cap, tcap);

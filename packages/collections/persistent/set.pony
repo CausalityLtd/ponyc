@@ -1,6 +1,6 @@
 use mut = "collections"
 
-type Set[A: (mut.Hashable val & Equatable[A])] is HashSet[A, mut.HashEq[A]]
+type Set[A: (mut.Hashable val & Equatable[A] val)] is HashSet[A, mut.HashEq[A]]
 
 type SetIs[A: Any #share] is HashSet[A, mut.HashIs[A]]
 

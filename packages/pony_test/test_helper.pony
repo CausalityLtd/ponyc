@@ -159,7 +159,7 @@ class val TestHelper
     """
     _check_eq[A]("eq", expect, actual, msg, loc)
 
-  fun _check_eq[A: (Equatable[A] #read & Stringable)]
+  fun _check_eq[A: (Equatable[A] #read & Stringable #read)]
     (check: String, expect: A, actual: A, msg: String, loc: SourceLoc)
     : Bool
   =>
@@ -221,7 +221,7 @@ class val TestHelper
     """
     _check_ne[A]("ne", not_expect, actual, msg, loc)
 
-  fun _check_ne[A: (Equatable[A] #read & Stringable)]
+  fun _check_ne[A: (Equatable[A] #read & Stringable #read)]
     (check: String, not_expect: A, actual: A, msg: String, loc: SourceLoc)
     : Bool
   =>
