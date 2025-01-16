@@ -18,8 +18,8 @@ endif()
 # Uncomment this to show build commands
 # set(CMAKE_VERBOSE_MAKEFILE ON)
 
-# We require C++14 (because LLVM does)
-set(CMAKE_CXX_STANDARD 14)
+# We require C++17 (because LLVM does)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # We require LLVM, Google Test and Google Benchmark

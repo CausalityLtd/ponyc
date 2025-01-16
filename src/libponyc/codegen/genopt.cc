@@ -938,7 +938,7 @@ public:
     unsigned functionIndex = AttributeList::FunctionIndex;
 
     fn->addFnAttr(Attribute::NoUnwind);
-    fn->addFnAttr(Attribute::ArgMemOnly);
+    fn->setOnlyAccessesArgMemory();
     fn->addParamAttr(1, Attribute::NoCapture);
     fn->addParamAttr(2, Attribute::ReadNone);
     return fn;

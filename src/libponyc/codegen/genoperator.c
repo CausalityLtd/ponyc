@@ -666,7 +666,7 @@ LLVMValueRef gen_neg(compile_t* c, ast_t* ast, bool safe)
     return NULL;
 
   if(LLVMIsAConstantFP(value))
-    return LLVMConstFNeg(value);
+    return LLVMBuildFNeg(c->builder, value, "");
 
   if(LLVMIsAConstantInt(value))
     return LLVMConstNeg(value);
