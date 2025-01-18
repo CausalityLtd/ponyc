@@ -8,6 +8,10 @@
 #include <platform.h>
 #include <dtrace.h>
 
+#ifdef USE_ADDRESS_SANITIZER
+#include <sanitizer/asan_interface.h>
+#endif
+
 typedef struct chunk_t
 {
   // used for pointer tagging
@@ -373,7 +377,7 @@ static void destroy_small(chunk_t* chunk, uint32_t mark)
 
   char* m = get_m(chunk);
   ponyint_pagemap_set(m, NULL, NULL);
-#ifndef PONY_NDEBUG
+#if !defined(PONY_NDEBUG) && !defined(USE_ADDRESS_SANITIZER)
   memset(m, 0, sizeof(block_t));
 #endif
   POOL_FREE(block_t, m);
@@ -394,7 +398,7 @@ static void destroy_large(chunk_t* chunk, uint32_t mark)
 
   if(m != NULL)
   {
-#ifndef PONY_NDEBUG
+#if !defined(PONY_NDEBUG) && !defined(USE_ADDRESS_SANITIZER)
     memset(m, 0, chunk->large.size);
 #endif
     ponyint_pool_free_size(chunk->large.size, m);
@@ -470,6 +474,24 @@ static size_t sweep_small(chunk_t* chunk, chunk_t** avail, chunk_t** full, chunk
 
       // run finalisers for freed slots
       final_small(chunk, FORCE_NO_FINALISERS);
+
+#if defined(USE_ADDRESS_SANITIZER)
+      uint32_t empty_slots = chunk->small.slots;
+      void* p = NULL;
+      uint64_t bit = 0;
+
+      // if there's an empty slot to poison memory for
+      while(empty_slots != 0)
+      {
+        bit = __pony_ctz(empty_slots);
+        p = get_m(chunk) + (bit << HEAP_MINBITS);
+
+        ASAN_POISON_MEMORY_REGION(p, size);
+
+        // clear bit for the slot we just poisoned
+        empty_slots &= (empty_slots - 1);
+      }
+#endif
 
       chunk->next = *avail;
       *avail = chunk;
@@ -693,6 +715,10 @@ void* ponyint_heap_alloc_small(pony_actor_t* actor, heap_t* heap,
       n = (chunk_t*) POOL_ALLOC(chunk_t);
       n->m = (char*) POOL_ALLOC(block_t);
       ponyint_pagemap_set(get_m(n), n, actor);
+
+#if defined(USE_ADDRESS_SANITIZER)
+      ASAN_POISON_MEMORY_REGION(get_m(n), sizeof(block_t));
+#endif
     }
 
     // we should always have a chunk and m at this point
@@ -732,6 +758,11 @@ void* ponyint_heap_alloc_small(pony_actor_t* actor, heap_t* heap,
   actor->actorstats.heap_num_allocated++;
   actor->actorstats.heap_mem_used += SIZECLASS_SIZE(sizeclass);
 #endif
+
+#if defined(USE_ADDRESS_SANITIZER)
+  ASAN_UNPOISON_MEMORY_REGION(m, SIZECLASS_SIZE(sizeclass));
+#endif
+
   heap->used += SIZECLASS_SIZE(sizeclass);
   return m;
 }
@@ -803,6 +834,10 @@ void* ponyint_heap_alloc_large(pony_actor_t* actor, heap_t* heap, size_t size,
     chunk->large.size = size;
     chunk->m = (char*) ponyint_pool_alloc_size(size);
     large_pagemap(get_m(chunk), size, chunk, actor);
+
+#if defined(USE_ADDRESS_SANITIZER)
+    ASAN_POISON_MEMORY_REGION(get_m(chunk), size);
+#endif
   }
 
   // we should always have a chunk and m of the right size at this point
@@ -830,6 +865,10 @@ void* ponyint_heap_alloc_large(pony_actor_t* actor, heap_t* heap, size_t size,
   chunk->next = heap->large;
   heap->large = chunk;
   heap->used += chunk->large.size;
+
+#if defined(USE_ADDRESS_SANITIZER)
+  ASAN_UNPOISON_MEMORY_REGION(get_m(chunk), chunk->large.size);
+#endif
 
   return get_m(chunk);
 }
@@ -1152,6 +1191,23 @@ void ponyint_heap_endgc(heap_t* heap
     else
       heap->recyclable[i] = temp_heap->recyclable[i];
   }
+
+#if defined(USE_ADDRESS_SANITIZER)
+  for(int i = 0; i < HEAP_RECYCLE_SIZECLASSES; i++)
+  {
+    chunk_t* sc = heap->recyclable[i];
+    while (sc != NULL)
+    {
+      if(get_chunk_is_small_chunk(sc))
+      {
+        ASAN_POISON_MEMORY_REGION(get_m(sc), sizeof(block_t));
+      } else {
+        ASAN_POISON_MEMORY_REGION(get_m(sc), sc->large.size);
+      }
+      sc = sc->next;
+    }
+  }
+#endif
 
   // Foreign object sizes will have been added to heap->used already. Here we
   // add local object sizes as well and set the next gc point for when memory

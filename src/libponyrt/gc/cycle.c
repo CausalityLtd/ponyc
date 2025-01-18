@@ -1322,6 +1322,7 @@ void ponyint_cycle_terminate(pony_ctx_t* ctx)
   ponyint_become(ctx, cycle_detector);
   final(ctx, cycle_detector);
   ponyint_destroy(ctx, cycle_detector);
+  ponyint_become(ctx, NULL);
   cycle_detector = NULL;
 }
 

@@ -77,26 +77,53 @@ TEST(Pool, LargeAlloc)
 
 TEST(Pool, Index)
 {
+  size_t expected_index = 0;
   size_t index = ponyint_pool_index(1);
   ASSERT_TRUE(index == 0);
 
+  index = ponyint_pool_index(7);
+  ASSERT_TRUE(index == expected_index);
+
+  index = ponyint_pool_index(8);
+  ASSERT_TRUE(index == expected_index);
+
+  index = ponyint_pool_index(9);
+  ASSERT_TRUE(index == expected_index);
+
+  index = ponyint_pool_index(15);
+  ASSERT_TRUE(index == expected_index);
+
+  index = ponyint_pool_index(16);
+  ASSERT_TRUE(index == expected_index);
+
+#ifndef POOL_USE_DEFAULT
+  expected_index++;
+#endif
+
+  index = ponyint_pool_index(17);
+  ASSERT_TRUE(index == expected_index);
+
   index = ponyint_pool_index(31);
-  ASSERT_TRUE(index == 0);
+  ASSERT_TRUE(index == expected_index);
 
   index = ponyint_pool_index(32);
-  ASSERT_TRUE(index == 0);
+  ASSERT_TRUE(index == expected_index);
+
+  expected_index++;
 
   index = ponyint_pool_index(33);
-  ASSERT_TRUE(index == 1);
+  ASSERT_TRUE(index == expected_index);
 
   index = ponyint_pool_index(63);
-  ASSERT_TRUE(index == 1);
+  ASSERT_TRUE(index == expected_index);
 
   index = ponyint_pool_index(64);
-  ASSERT_TRUE(index == 1);
+  ASSERT_TRUE(index == expected_index);
+
+  expected_index++;
 
   index = ponyint_pool_index(65);
-  ASSERT_TRUE(index == 2);
+  ASSERT_TRUE(index == expected_index);
 
   index = ponyint_pool_index(POOL_MAX - 1);
   ASSERT_TRUE(index == POOL_COUNT - 1);

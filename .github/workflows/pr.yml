@@ -453,6 +453,9 @@ jobs:
           - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
             debugger: lldb
             directives: runtimestats
+          - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
+            debugger: lldb
+            directives: pool_memalign,address_sanitizer,undefined_behavior_sanitizer
 
     name: use ${{ matrix.directives }}
     container:
@@ -477,15 +480,36 @@ jobs:
           path: build/libs
           key: libs-${{ matrix.image }}-${{ hashFiles('Makefile', 'CMakeLists.txt', 'lib/CMakeLists.txt') }}
       - name: Build Debug Runtime
+        if: matrix.directives != 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
         run: |
           make configure arch=x86-64 config=debug use=${{ matrix.directives }}
           make build config=debug
       - name: Test with Debug Runtime
+        if: matrix.directives != 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
         run: make test-ci config=debug usedebugger='${{ matrix.debugger }}'
       - name: Build Release Runtime
+        if: matrix.directives != 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
         run: |
           make configure arch=x86-64 config=release use=${{ matrix.directives }}
-
           make build config=release
       - name: Test with Release Runtime
+        if: matrix.directives != 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
         run: make test-ci config=release usedebugger='${{ matrix.debugger }}'
+      - name: Build Debug Runtime (sanitizers)
+        if: matrix.directives == 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
+        run: |
+          $PWD/build/libs/bin/llvm-symbolizer --help
+          PATH=$PWD/build/libs/bin/:$PATH llvm-symbolizer --help
+          ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make configure arch=x86-64 config=debug use=${{ matrix.directives }}
+          ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make build config=debug
+      - name: Test with Debug Runtime (sanitizers)
+        if: matrix.directives == 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
+        run: ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make test-ci config=debug
+      - name: Build Release Runtime (sanitizers)
+        if: matrix.directives == 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
+        run: |
+          ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make configure arch=x86-64 config=release use=${{ matrix.directives }}
+          ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make build config=release
+      - name: Test with Release Runtime (sanitizers)
+        if: matrix.directives == 'pool_memalign,address_sanitizer,undefined_behavior_sanitizer'
+        run: ASAN_OPTIONS=detect_leaks=0 PATH=$PWD/build/libs/bin/:$PATH make test-ci config=release
