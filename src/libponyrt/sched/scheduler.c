@@ -20,6 +20,10 @@
 
 #define PONY_SCHED_BLOCK_THRESHOLD 1000000
 
+#ifdef POOL_USE_MESSAGE_PASSING
+#define POOL_ALLOC_INTERVAL 2000000000
+#endif
+
 static DECLARE_THREAD_FN(run_thread);
 
 typedef enum
@@ -31,7 +35,10 @@ typedef enum
   SCHED_TERMINATE = 40,
   SCHED_UNMUTE_ACTOR = 50,
   SCHED_NOISY_ASIO = 51,
-  SCHED_UNNOISY_ASIO = 52
+  SCHED_UNNOISY_ASIO = 52,
+#ifdef POOL_USE_MESSAGE_PASSING
+  SCHED_POOL_ALLOCS = 60
+#endif
 } sched_msg_t;
 
 // Scheduler global data.
@@ -51,6 +58,11 @@ static PONY_ATOMIC(bool) pinned_actor_scheduler_suspended;
 static PONY_ATOMIC(bool) pinned_actor_scheduler_suspended_check;
 static scheduler_t* pinned_actor_scheduler;
 static __pony_thread_local scheduler_t* this_scheduler;
+
+#ifdef POOL_USE_MESSAGE_PASSING
+static pool_remote_allocs_t* pool_remote_allocs;
+static uint64_t last_pool_alloc_share_tsc;
+#endif
 
 #if defined(USE_SCHEDULER_SCALING_PTHREADS)
 static pthread_mutex_t sched_mut;
@@ -463,6 +475,55 @@ static void handle_sched_unblock(scheduler_t* sched)
   pony_assert(sched->block_count <= scheduler_count);
 }
 
+#ifdef POOL_USE_MESSAGE_PASSING
+static bool maybe_send_pool_message_passing_allocs(scheduler_t* sched, pool_remote_allocs_t* remote_allocs)
+{
+  // only scheduler 0 should be calling this function
+  pony_assert(0 == sched->index);
+
+  uint64_t current_tsc = ponyint_cpu_tick();
+
+  // at least approximately 1000 milliseconds has passed since the last time
+  if(POOL_ALLOC_INTERVAL < ponyint_cpu_tick_diff(last_pool_alloc_share_tsc, current_tsc))
+  {
+    last_pool_alloc_share_tsc = current_tsc;
+
+    uint32_t current_active_scheduler_count = get_active_scheduler_count();
+    bool is_pinned_actor_scheduler_suspended = atomic_load_explicit(&pinned_actor_scheduler_suspended, memory_order_relaxed);
+
+    if(1 < current_active_scheduler_count || !is_pinned_actor_scheduler_suspended)
+    {
+      // only send allocs if there are other schedulers awake
+
+      // tell the pool message passing implementation to do whatever it needs to
+      // for sending pool allocations back to owning scheduler threads
+      ponyint_pool_gather_receive_remote_allocations(remote_allocs);
+
+      if(1 < current_active_scheduler_count)
+      {
+        // send the allocs to scheduler 1 if it is awake
+        send_msg(sched->index, 1, SCHED_POOL_ALLOCS, (intptr_t)remote_allocs);
+
+        // make sure scheduler 1 is awake in case it went to sleep in the meantime
+        ponyint_sched_maybe_wakeup(sched->index, 2);
+      } else {
+        // send the allocs to the pinned actor thread if scheduler 1 is not awake (or doesn't exist)
+        send_msg_pinned_actor_thread(sched->index, SCHED_POOL_ALLOCS, (intptr_t)remote_allocs);
+
+        // make sure pinned actor thread is awake in case it went to sleep in the meantime
+        wake_suspended_pinned_actor_thread();
+      }
+
+      // sent the allocs
+      return true;
+    }
+  }
+
+  // didn't send the allocs
+  return false;
+}
+#endif
+
 static bool read_msg(scheduler_t* sched, pony_actor_t* actor)
 {
 #ifdef USE_RUNTIMESTATS
@@ -562,6 +623,53 @@ static bool read_msg(scheduler_t* sched, pony_actor_t* actor)
         pony_assert(sched->asio_noisy >= 0);
         break;
       }
+
+#ifdef POOL_USE_MESSAGE_PASSING
+      case SCHED_POOL_ALLOCS:
+      {
+        pony_assert(PONY_UNKNOWN_SCHEDULER_INDEX != sched->index);
+        // tell the pool message passing implementation to do whatever it needs to
+        // for receiving pool allocations from other scheduler threads
+        pool_remote_allocs_t* remote_allocs = (pool_remote_allocs_t*)m->i;
+        if (0 != sched->index)
+        {
+          // if we're not scheduler 0, we need to keep passing the remote_allocs along
+          // after adding our own allocations to it
+          ponyint_pool_gather_receive_remote_allocations(remote_allocs);
+
+          uint32_t current_active_scheduler_count = get_active_scheduler_count();
+          uint32_t next_sched_index = (sched->index + 1) % current_active_scheduler_count;
+          bool is_pinned_actor_scheduler_suspended = atomic_load_explicit(&pinned_actor_scheduler_suspended, memory_order_relaxed);
+
+          if(0 == next_sched_index && !is_pinned_actor_scheduler_suspended)
+          {
+            // send the allocs to the pinned actor thread if we would otherwise send to scheduler 0
+            send_msg_pinned_actor_thread(sched->index, SCHED_POOL_ALLOCS, (intptr_t)remote_allocs);
+
+            // make sure pinned actor thread is awake in case it went to sleep in the meantime
+            wake_suspended_pinned_actor_thread();
+          } else {
+            // send the allocs to the next active scheduler (don't want to send to
+            // a sleeping scheduler because we don't want to wake them up only for this)
+            send_msg(sched->index, next_sched_index, SCHED_POOL_ALLOCS, (intptr_t)remote_allocs);
+
+            // make sure the next scheduler is awake in case it went to sleep in the meantime
+            ponyint_sched_maybe_wakeup(sched->index, next_sched_index + 1);
+          }
+        } else {
+          // if we're scheduler 0, we send again only if it's been long enough
+          if(!maybe_send_pool_message_passing_allocs(sched, remote_allocs))
+          {
+            // didn't send allocs to other schedulers
+            // need to add the remote_allocs to the local pool first
+            // and then wait until it's time to send again
+            ponyint_pool_receive_remote_allocations(remote_allocs);
+            pool_remote_allocs = remote_allocs;
+          }
+        }
+        break;
+      }
+#endif
 
       default: {}
     }
@@ -1095,6 +1203,10 @@ static void run(scheduler_t* sched)
   if(sched->index == 0) {
     pause_cycle_detection = false;
     last_cd_tsc = 0;
+#ifdef POOL_USE_MESSAGE_PASSING
+    last_pool_alloc_share_tsc = ponyint_cpu_tick();
+    pool_remote_allocs = ponyint_initialize_pool_message_passing();
+#endif
   }
 
   pony_actor_t* actor = pop_global(sched);
@@ -1152,6 +1264,20 @@ static void run(scheduler_t* sched)
         // but is necessary in case the signal to wake a thread was missed
         signal_suspended_threads(current_active_scheduler_count, sched->index);
       }
+
+#ifdef POOL_USE_MESSAGE_PASSING
+      // we only want to do pool message passing shenanigans if we haven't already
+      if (NULL != pool_remote_allocs)
+      {
+        if(maybe_send_pool_message_passing_allocs(sched, pool_remote_allocs))
+        {
+          // sent the allocations to other schedulers
+          // set to null so we don't try to send the same allocs again
+          // and as a way to know we're waiting to receive allocs back from other schedulers
+          pool_remote_allocs = NULL;
+        }
+      }
+#endif
     }
 
     // In response to reading a message, we might have unmuted an actor and
@@ -1215,7 +1341,7 @@ static void run(scheduler_t* sched)
     // the extra scheduler threads would keep being woken up and then go back
     // to sleep over and over again.
     if(ponyint_mutemap_size(&sched->mute_mapping) > 0)
-      ponyint_sched_maybe_wakeup(sched->index);
+      ponyint_sched_maybe_wakeup(sched->index, scheduler_count);
 
     pony_assert(!ponyint_actor_is_pinned(actor));
 
@@ -1243,7 +1369,7 @@ static void run(scheduler_t* sched)
         // parallel.
         // Try and wake up a sleeping scheduler thread to help with the load.
         // If there isn't enough work, they'll go back to sleep.
-        ponyint_sched_maybe_wakeup(sched->index);
+        ponyint_sched_maybe_wakeup(sched->index, scheduler_count);
       }
     } else {
       // We aren't rescheduling, so run the next actor. This may be NULL if our
@@ -1376,9 +1502,9 @@ static void perhaps_suspend_pinned_actor_scheduler(
 
 /**
  * Run a custom scheduler thread for pinned actors until termination.
- * This thread does not partiticpate in most normal scheduler messaging
- * like CNF/ACK/block/unblock/suspend/noisy/unnoisy. it does participate in
- * muting messages and termination messages.
+ * This thread does not partiticpate in some normal scheduler messaging
+ * like block/unblock/noisy/unnoisy. it does participate in
+ * muting messages, CNF/ACK, POOL_ALLOCS and termination messages.
  */
 static void run_pinned_actors()
 {
@@ -1885,13 +2011,13 @@ void ponyint_sched_unnoisy_asio(int32_t from)
 // Maybe wake up a scheduler thread if possible
 void ponyint_sched_maybe_wakeup_if_all_asleep(int32_t current_scheduler_id)
 {
-  uint32_t current_active_scheduler_count = get_active_scheduler_count();
+  uint32_t current_active_scheduler_count = -1;
 
   // wake up threads if the current active count is 0
   // keep trying until successful to avoid deadlock
   while((current_active_scheduler_count = get_active_scheduler_count()) == 0)
   {
-    ponyint_sched_maybe_wakeup(current_scheduler_id);
+    ponyint_sched_maybe_wakeup(current_scheduler_id, 1);
 
     current_active_scheduler_count = get_active_scheduler_count();
 
@@ -1914,12 +2040,12 @@ void ponyint_sched_maybe_wakeup_if_all_asleep(int32_t current_scheduler_id)
 }
 
 // Maybe wake up a scheduler thread if possible
-void ponyint_sched_maybe_wakeup(int32_t current_scheduler_id)
+void ponyint_sched_maybe_wakeup(int32_t current_scheduler_id, uint32_t max_schedulers_required)
 {
   uint32_t current_active_scheduler_count = get_active_scheduler_count();
 
   // if we have some schedulers that are sleeping, wake one up
-  if((current_active_scheduler_count < scheduler_count) &&
+  if((current_active_scheduler_count < max_schedulers_required) &&
 #if defined(USE_SCHEDULER_SCALING_PTHREADS)
     // try to acquire mutex if using pthreads
     !pthread_mutex_trylock(&sched_mut)
@@ -1935,7 +2061,7 @@ void ponyint_sched_maybe_wakeup(int32_t current_scheduler_id)
     // in case the count changed between the while check and now
     current_active_scheduler_count = get_active_scheduler_count();
 
-    if(current_active_scheduler_count < scheduler_count)
+    if(current_active_scheduler_count < max_schedulers_required)
     {
       // increment active_scheduler_count to wake a new scheduler up
       current_active_scheduler_count++;

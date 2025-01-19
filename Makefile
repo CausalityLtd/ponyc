@@ -148,6 +148,8 @@ define USE_CHECK
     PONY_USES += -DPONY_USE_RUNTIMESTATS_MESSAGES=true
   else ifeq ($1,pool_memalign)
     PONY_USES += -DPONY_USE_POOL_MEMALIGN=true
+  else ifeq ($1,pool_message_passing)
+    PONY_USES += -DPONY_USE_POOL_MESSAGE_PASSING=true
   else
     $$(error ERROR: Unknown use option specified: $1)
   endif

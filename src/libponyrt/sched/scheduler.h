@@ -150,7 +150,7 @@ void ponyint_sched_noisy_asio(int32_t from);
 void ponyint_sched_unnoisy_asio(int32_t from);
 
 // Try and wake up a sleeping scheduler thread to help with load
-void ponyint_sched_maybe_wakeup(int32_t current_scheduler_id);
+void ponyint_sched_maybe_wakeup(int32_t current_scheduler_id, uint32_t max_schedulers_required);
 
 // Try and wake up a sleeping scheduler thread only if all scheduler
 // threads are asleep
