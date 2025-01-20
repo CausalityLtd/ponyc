@@ -546,7 +546,7 @@ static int trace_cap_nominal(pass_opt_t* opt, ast_t* type, ast_t* orig,
   // val and tag in that order.
   if(orig_cap == TK_ISO)
   {
-    if(is_matchtype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
+    if(is_astype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
     {
       return PONY_TRACE_MUTABLE;
     } else {
@@ -556,7 +556,7 @@ static int trace_cap_nominal(pass_opt_t* opt, ast_t* type, ast_t* orig,
 
   if(ast_id(cap) == TK_VAL)
   {
-    if(is_matchtype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
+    if(is_astype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
     {
       ast_setid(cap, orig_cap);
       return PONY_TRACE_IMMUTABLE;
@@ -568,7 +568,7 @@ static int trace_cap_nominal(pass_opt_t* opt, ast_t* type, ast_t* orig,
   pony_assert(ast_id(cap) == TK_TAG);
 
   int ret = -1;
-  if(is_matchtype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
+  if(is_astype(orig, type, NULL, opt) == MATCHTYPE_ACCEPT)
     ret = PONY_TRACE_OPAQUE;
 
   ast_setid(cap, orig_cap);

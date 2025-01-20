@@ -5,6 +5,7 @@
 #include "typeparam.h"
 #include "viewpoint.h"
 #include "ponyassert.h"
+#include "alias.h"
 
 static matchtype_t is_x_match_x(ast_t* operand, ast_t* pattern,
   errorframe_t* errorf, bool report_reject, pass_opt_t* opt);
@@ -578,7 +579,7 @@ static matchtype_t is_nominal_match_entity(ast_t* operand, ast_t* pattern,
 
   // If the operand does provide the pattern, but the operand refcap can't
   // match the pattern refcap, deny the match.
-  if(!is_cap_sub_cap(ast_id(o_cap), TK_EPHEMERAL,
+  if(!is_cap_sub_cap(ast_id(o_cap), ast_id(o_eph),
     ast_id(p_cap), ast_id(p_eph)))
   {
     if(errorf != NULL)
@@ -589,7 +590,13 @@ static matchtype_t is_nominal_match_entity(ast_t* operand, ast_t* pattern,
         ast_print_type(operand), ast_print_type(pattern),
         ast_print_type(o_cap), ast_print_type(o_eph),
         ast_print_type(p_cap), ast_print_type(p_eph));
-    }
+
+        if(is_cap_sub_cap(ast_id(o_cap), TK_EPHEMERAL, ast_id(p_cap),
+          ast_id(p_eph)))
+          ast_error_frame(errorf, o_cap,
+            "this would be possible if the subcap were more ephemeral. "
+            "Perhaps you meant to consume this variable");
+  }
 
     return MATCHTYPE_DENY_CAP;
   }
@@ -921,6 +928,22 @@ static matchtype_t is_x_match_x(ast_t* operand, ast_t* pattern,
 }
 
 matchtype_t is_matchtype(ast_t* operand, ast_t* pattern, errorframe_t* errorf,
+  pass_opt_t* opt)
+{
+  ast_t* consumed_pattern = consume_type(pattern, TK_NONE, false);
+  if (consumed_pattern == NULL)
+    return MATCHTYPE_REJECT;
+
+  matchtype_t rslt = is_x_match_x(operand, consumed_pattern, errorf, true, opt);
+
+  // TODO discuss with joe
+  if (consumed_pattern != pattern)
+    ast_free_unattached(consumed_pattern);
+
+  return rslt;
+}
+
+matchtype_t is_astype(ast_t* operand, ast_t* pattern, errorframe_t* errorf,
   pass_opt_t* opt)
 {
   return is_x_match_x(operand, pattern, errorf, true, opt);

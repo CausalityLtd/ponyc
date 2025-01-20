@@ -1306,9 +1306,42 @@ TEST_F(BadPonyTest, NotSafeToWrite)
       const char* errs[] =
         {"not safe to write right side to left side", NULL};
       const char* frame1[] = {
-        "right side type: Foo ref^", 
+        "right side type: Foo ref^",
         "left side type: X iso", NULL};
       const char** frames[] = {frame1, NULL};
       DO(test_expected_error_frames(src, "badpony", errs, frames));
   }
+}
+
+TEST_F(BadPonyTest, MatchIsoFieldWithoutConsume)
+{
+  // From issue #4579
+  const char* src =
+    "class Bad\n"
+    "  var _s: String iso\n"
+
+    "  new iso create(s: String iso) =>\n"
+    "    _s = consume s\n"
+
+    "  fun ref take(): String iso^ =>\n"
+    "    match _s\n"
+    "    | let s': String iso => consume s'\n"
+    "    end";
+
+    TEST_ERRORS_1(src, "this capture violates capabilities");
+}
+
+TEST_F(BadPonyTest, MatchIsoLetWithoutConsume)
+{
+  // From issue #4579
+  const char* src =
+    "class Bad\n"
+    "  fun bad() =>\n"
+    "    let a: String iso = recover iso String end\n"
+
+    "    match a\n"
+    "    | let a': String iso => None\n"
+    "    end";
+
+    TEST_ERRORS_1(src, "this capture violates capabilities");
 }

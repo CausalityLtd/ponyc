@@ -551,7 +551,7 @@ static bool add_as_type(pass_opt_t* opt, ast_t* ast, ast_t* expr,
 
       ast_t* expr_type = ast_type(expr);
       errorframe_t info = NULL;
-      matchtype_t is_match = is_matchtype(expr_type, type, &info, opt);
+      matchtype_t is_match = is_astype(expr_type, type, &info, opt);
       if(is_match == MATCHTYPE_DENY_CAP)
       {
         errorframe_t frame = NULL;

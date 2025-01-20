@@ -44,6 +44,14 @@ typedef enum
 matchtype_t is_matchtype(ast_t* operand, ast_t* pattern, errorframe_t* errorf,
   pass_opt_t* opt);
 
+/**
+ * Same as is_matchtype() but specifically designed to work with `as` which
+ * under the steed model, needs to act differently than matchwith respect
+ * to iso.
+ */
+matchtype_t is_astype(ast_t* operand, ast_t* pattern, errorframe_t* errorf,
+  pass_opt_t* opt);
+
 PONY_EXTERN_C_END
 
 #endif
