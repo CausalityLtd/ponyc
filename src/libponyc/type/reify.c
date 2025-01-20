@@ -8,24 +8,68 @@
 #include "../../libponyrt/mem/pool.h"
 #include "ponyassert.h"
 
-static void reify_typeparamref(ast_t** astp, ast_t* typeparam, ast_t* typearg)
+static ast_t* find_typearg(pass_opt_t* opt, ast_t* ast, ast_t* typeparams, ast_t* typeargs)
+{
+  ast_t* ref_def = NULL;
+  switch(ast_id(ast))
+  {
+    case TK_REFERENCE:
+      ref_def = ast_get(ast, ast_name(ast_child(ast)), NULL);
+      if(ref_def == NULL)
+        return NULL;
+
+      break;
+
+    case TK_TYPEPARAMREF:
+      ref_def = (ast_t*)ast_data(ast);
+      pony_assert(ref_def != NULL);
+      break;
+
+    default:
+      pony_assert(0);
+  }
+
+  // Iterate pairwise through the typeparams and typeargs,
+  // until we find the one corresponding to this ref
+  ast_t* typeparam = ast_child(typeparams);
+  ast_t* typearg = ast_child(typeargs);
+
+  while((typeparam != NULL) && (typearg != NULL))
+  {
+    ast_t* param_def = (ast_t*)ast_data(typeparam);
+    pony_assert(param_def != NULL);
+
+    if(ref_def == param_def)
+      return typearg;
+
+    if(ast_id(ast) == TK_TYPEPARAMREF)
+    {
+      AST_GET_CHILDREN(param_def, param_name, param_constraint);
+      AST_GET_CHILDREN(ref_def, ref_name, ref_constraint);
+
+      if(ast_name(ref_name) == ast_name(param_name))
+      {
+        if((ast_id(param_constraint) == TK_TYPEPARAMREF) ||
+            is_subtype(ref_constraint, param_constraint, NULL, opt))
+          return typearg;
+      }
+    }
+
+    // Not the type variable we are looking for, move on to next
+    typeparam = ast_sibling(typeparam);
+    typearg = ast_sibling(typearg);
+  }
+
+  return NULL;
+}
+
+static void reify_typeparamref(pass_opt_t* opt, ast_t** astp, ast_t* typeparams, ast_t* typeargs)
 {
   ast_t* ast = *astp;
   pony_assert(ast_id(ast) == TK_TYPEPARAMREF);
-  pony_assert(ast_id(typeparam) == TK_TYPEPARAM);
 
-  ast_t* ref_def = (ast_t*)ast_data(ast);
-
-  // We can't compare ref_def and typeparam, as they could be a copy or
-  // a iftype shadowing. However, their data points back to the original
-  // typeparam definition, which can be compared.
-  ref_def = (ast_t*)ast_data(ref_def);
-  typeparam = (ast_t*)ast_data(typeparam);
-
-  pony_assert(ref_def != NULL);
-  pony_assert(typeparam != NULL);
-
-  if(ref_def != typeparam)
+  ast_t* typearg = find_typearg(opt, ast, typeparams, typeargs);
+  if (typearg == NULL)
     return;
 
   // Keep ephemerality.
@@ -84,23 +128,13 @@ static void reify_arrow(ast_t** astp)
   ast_replace(astp, r_type);
 }
 
-static void reify_reference(ast_t** astp, ast_t* typeparam, ast_t* typearg)
+static void reify_reference(pass_opt_t* opt, ast_t** astp, ast_t* typeparams, ast_t* typeargs)
 {
   ast_t* ast = *astp;
   pony_assert(ast_id(ast) == TK_REFERENCE);
 
-  const char* name = ast_name(ast_child(ast));
-
-  sym_status_t status;
-  ast_t* ref_def = ast_get(ast, name, &status);
-
-  if(ref_def == NULL)
-    return;
-
-  ast_t* param_def = (ast_t*)ast_data(typeparam);
-  pony_assert(param_def != NULL);
-
-  if(ref_def != param_def)
+  ast_t* typearg = find_typearg(opt, ast, typeparams, typeargs);
+  if (typearg == NULL)
     return;
 
   ast_setid(ast, TK_TYPEREF);
@@ -109,39 +143,6 @@ static void reify_reference(ast_t** astp, ast_t* typeparam, ast_t* typearg)
   ast_settype(ast, typearg);
 }
 
-static void reify_one(pass_opt_t* opt, ast_t** astp, ast_t* typeparam, ast_t* typearg)
-{
-  ast_t* ast = *astp;
-  ast_t* child = ast_child(ast);
-
-  while(child != NULL)
-  {
-    reify_one(opt, &child, typeparam, typearg);
-    child = ast_sibling(child);
-  }
-
-  ast_t* type = ast_type(ast);
-
-  if(type != NULL)
-    reify_one(opt, &type, typeparam, typearg);
-
-  switch(ast_id(ast))
-  {
-    case TK_TYPEPARAMREF:
-      reify_typeparamref(astp, typeparam, typearg);
-      break;
-
-    case TK_ARROW:
-      reify_arrow(astp);
-      break;
-
-    case TK_REFERENCE:
-      reify_reference(astp, typeparam, typearg);
-      break;
-
-    default: {}
-  }
-}
 
 bool reify_defaults(ast_t* typeparams, ast_t* typeargs, bool errors,
   pass_opt_t* opt)
@@ -201,6 +202,40 @@ bool reify_defaults(ast_t* typeparams, ast_t* typeargs, bool errors,
   return true;
 }
 
+static void reify_ast(ast_t** astp, ast_t* typeparams, ast_t* typeargs, pass_opt_t* opt)
+{
+  ast_t* ast = *astp;
+  ast_t* child = ast_child(ast);
+
+  while(child != NULL)
+  {
+    reify_ast(&child, typeparams, typeargs, opt);
+    child = ast_sibling(child);
+  }
+
+  ast_t* type = ast_type(ast);
+
+  if(type != NULL)
+    reify_ast(&type, typeparams, typeargs, opt);
+
+  switch(ast_id(ast))
+  {
+    case TK_TYPEPARAMREF:
+      reify_typeparamref(opt, astp, typeparams, typeargs);
+      break;
+
+    case TK_ARROW:
+      reify_arrow(astp);
+      break;
+
+    case TK_REFERENCE:
+      reify_reference(opt, astp, typeparams, typeargs);
+      break;
+
+    default: {}
+  }
+}
+
 ast_t* reify(ast_t* ast, ast_t* typeparams, ast_t* typeargs, pass_opt_t* opt,
   bool duplicate)
 {
@@ -220,19 +255,7 @@ ast_t* reify(ast_t* ast, ast_t* typeparams, ast_t* typeargs, pass_opt_t* opt,
   else
     r_ast = ast;
 
-  // Iterate pairwise through the typeparams and typeargs.
-  ast_t* typeparam = ast_child(typeparams);
-  ast_t* typearg = ast_child(typeargs);
-
-  while((typeparam != NULL) && (typearg != NULL))
-  {
-    reify_one(opt, &r_ast, typeparam, typearg);
-    typeparam = ast_sibling(typeparam);
-    typearg = ast_sibling(typearg);
-  }
-
-  pony_assert(typeparam == NULL);
-  pony_assert(typearg == NULL);
+  reify_ast(&r_ast, typeparams, typeargs, opt);
   return r_ast;
 }
 
