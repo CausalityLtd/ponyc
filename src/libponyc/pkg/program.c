@@ -16,6 +16,7 @@ typedef struct program_t
   uint32_t next_package_id;
   strlist_t* libpaths;
   strlist_t* libs;
+  strlist_t* llvm_irs;
   size_t lib_args_size;
   size_t lib_args_alloced;
   char* lib_args;
@@ -142,6 +143,41 @@ bool use_library(ast_t* use, const char* locator, ast_t* name,
   return true;
 }
 
+/// Process a "llvm:" scheme use command.
+bool use_llvm(ast_t* use, const char* locator, ast_t* name,
+  pass_opt_t* options)
+{
+  (void)name;
+  (void)options;
+
+  char absolute[FILENAME_MAX];
+  const char* prefix = NULL;
+
+  if(!is_path_absolute(locator)) {
+    ast_t* pkg_ast = ast_nearest(use, TK_PACKAGE);
+    prefix = package_path(pkg_ast);
+  }
+
+  path_cat(prefix, locator, absolute);
+
+  size_t len = strlen(absolute);
+  char* allocated = (char*)ponyint_pool_alloc_size(len + 4); // ".ll\0"
+  memcpy(allocated, absolute, len);
+  allocated[len] = '.';
+  allocated[len + 1] = 'l';
+  allocated[len + 2] = 'l';
+  allocated[len + 3] = '\0';
+  const char* libname = stringtab_consume(allocated, len + 4);
+
+  if(libname == NULL)
+    return false;
+
+  ast_t* p = ast_nearest(use, TK_PROGRAM);
+  program_t* prog = (program_t*)ast_data(p);
+
+  prog->llvm_irs = strlist_append(prog->llvm_irs, libname);
+  return true;
+}
 
 /// Process a "path:" scheme use command.
 bool use_path(ast_t* use, const char* locator, ast_t* name,
@@ -173,6 +209,16 @@ bool use_path(ast_t* use, const char* locator, ast_t* name,
   return true;
 }
 
+strlist_t* program_llvm_irs(ast_t* program)
+{
+  pony_assert(program != NULL);
+  pony_assert(ast_id(program) == TK_PROGRAM);
+
+  program_t* data = (program_t*)ast_data(program);
+  pony_assert(data != NULL);
+
+  return data->llvm_irs;
+}
 
 void program_lib_build_args(ast_t* program, pass_opt_t* opt,
   const char* path_preamble, const char* rpath_preamble,

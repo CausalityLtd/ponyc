@@ -610,7 +610,7 @@ bool genexe(compile_t* c, ast_t* program)
       return false;
   }
 
-  const char* file_o = genobj(c);
+  const char* file_o = genobj(c, program);
 
   if(file_o == NULL)
     return false;
