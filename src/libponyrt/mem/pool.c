@@ -30,17 +30,6 @@
 #include <valgrind/helgrind.h>
 #endif
 
-/// When we mmap, pull at least this many bytes.
-#ifdef PLATFORM_IS_ILP32
-#  define POOL_MMAP (16 * 1024 * 1024) // 16 MB
-#else
-#  ifdef PLATFORM_IS_WINDOWS
-#    define POOL_MMAP (16 * 1024 * 1024) // 16 MB
-#  else
-#    define POOL_MMAP (128 * 1024 * 1024) // 128 MB
-#  endif
-#endif
-
 /// An item on a per-size thread-local free list.
 typedef struct pool_item_t
 {

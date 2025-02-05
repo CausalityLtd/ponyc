@@ -448,7 +448,7 @@ jobs:
             directives: dtrace
           - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
             debugger: lldb
-            directives: pool_memalign
+            directives: pool_message_passing
           - image: ghcr.io/ponylang/ponyc-ci-x86-64-unknown-linux-ubuntu24.04-builder:20250115
             debugger: lldb
             directives: runtimestats

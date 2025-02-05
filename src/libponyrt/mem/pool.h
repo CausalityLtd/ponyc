@@ -8,15 +8,28 @@
 
 #if defined(USE_POOL_MEMALIGN)
 #  define POOL_USE_MEMALIGN
+#elif defined(USE_POOL_MESSAGE_PASSING)
+#  define POOL_USE_MESSAGE_PASSING
 #else
 #  define POOL_USE_DEFAULT
+#endif
+
+/// When we mmap, pull at least this many bytes.
+#ifdef PLATFORM_IS_ILP32
+#  define POOL_MMAP (16 * 1024 * 1024) // 16 MB
+#else
+#  ifdef PLATFORM_IS_WINDOWS
+#    define POOL_MMAP (16 * 1024 * 1024) // 16 MB
+#  else
+#    define POOL_MMAP (128 * 1024 * 1024) // 128 MB
+#  endif
 #endif
 
 PONY_EXTERN_C_BEGIN
 
 /* Because of the way free memory is reused as its own linked list container,
  * the minimum allocation size is 32 bytes for the default pool implementation
- * and 16 bytes for the memalign pool implementation.
+ * and 16 bytes for the memalign and message passing pool implementations.
  */
 
 #ifndef POOL_USE_DEFAULT
@@ -100,6 +113,13 @@ size_t ponyint_pool_adjust_size(size_t size);
 
 #define POOL_SIZE(INDEX) \
   ((size_t)1 << (POOL_MIN_BITS + INDEX))
+
+#ifdef POOL_USE_MESSAGE_PASSING
+typedef struct pool_remote_allocs_t pool_remote_allocs_t;
+pool_remote_allocs_t* ponyint_initialize_pool_message_passing();
+void ponyint_pool_gather_receive_remote_allocations(pool_remote_allocs_t* remote_allocs);
+void ponyint_pool_receive_remote_allocations(pool_remote_allocs_t* remote_allocs);
+#endif
 
 #ifdef USE_RUNTIMESTATS
 #define POOL_ALLOC_SIZE(TYPE) \

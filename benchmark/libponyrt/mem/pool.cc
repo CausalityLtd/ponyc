@@ -4,13 +4,6 @@
 
 #define LARGE_ALLOC ponyint_pool_adjust_size(POOL_MAX + 1)
 
-/// When we mmap, pull at least this many bytes.
-#ifdef PLATFORM_IS_ILP32
-#define POOL_MMAP (16 * 1024 * 1024) // 16 MB
-#else
-#define POOL_MMAP (128 * 1024 * 1024) // 128 MB
-#endif
-
 typedef char block_t[32];
 
 class PoolBench: public ::benchmark::Fixture

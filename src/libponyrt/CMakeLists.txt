@@ -40,6 +40,7 @@ set(_c_src
     mem/pagemap.c
     mem/pool.c
     mem/pool_memalign.c
+    mem/pool_message_passing.c
     options/options.c
     platform/ponyassert.c
     platform/threads.c
